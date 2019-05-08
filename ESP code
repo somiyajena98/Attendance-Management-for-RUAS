@@ -1,0 +1,103 @@
+#include "Adafruit_Fingerprint.h" //fingerprint library header file
+#include<EEPROM.h> //command for storing data
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+#include <EEPROM.h>
+#include<ArduinoJson.h>
+
+#include <SoftwareSerial.h>
+SoftwareSerial esp(D6,D5);
+
+const char* ssid     = "Tenda_32F238";
+const char* password = "12345678";
+
+//Time t;
+//const char ser[] = "192.168.1.2";
+
+
+WiFiServer server(80);
+WiFiClient client;
+MDNSResponder mdns; //multicast Domain Name System
+
+
+
+int data[1000];
+ int i=0;
+ 
+void setup(void)
+{
+  Serial.begin(9600);        // initialize serial
+  esp.begin(9600);
+  while(!Serial) continue;
+  WiFi.begin(ssid, password);
+  Serial.print("\n\r \n\rWorking to connect");
+ 
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.print("Connected to ");
+  Serial.println(ssid);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  if (mdns.begin("esp8266", WiFi.localIP())) {
+    Serial.println("MDNS responder started");
+  }
+  server.begin();
+  Serial.println("HTTP server started");
+  delay(1000);
+}
+ 
+void loop(void)
+{
+  StaticJsonBuffer<1000> jsonBuffer;
+  JsonObject& root = jsonBuffer.parseObject(esp);
+  if(root == JsonObject::invalid())
+    return;
+  Serial.println("Json received and parsed");
+  root.prettyPrintTo(Serial);
+  Serial.print("Data 1 ");
+  Serial.println("");
+  int data1=root["1"];
+//  int data2=root{"2"];
+//  int data3=root["3"];
+  Serial.print(data1);
+  Serial.print("");
+//  Serial.println(data3);
+  Serial.println("---------------------xxxxx--------------------");
+  Serial.println("\nStarting connection to server...");
+  if (client.connect("192.168.0.101", 80)) {
+  Serial.println("connected to server");
+  //if(data3==1){
+  client.print("GET /write_data.php?"); // This
+  client.print("value="); // This
+  client.print(data1); // And this is what we did in the testing section above. We are making a GET request just like we would from our browser but now with live data from the sensor
+//  client.print(data2);
+  client.println(" HTTP/1.1"); // Part of the GET request
+  client.println("Host: 127.0.0.1"); // IMPORTANT: If you are using XAMPP you will have to find out the IP address of your computer and put it here 
+  client.println("Connection: close"); // Part of the GET request telling the server that we are over transmitting the message
+  client.println(); // Empty line
+  client.println(); // Empty line
+  client.stop();    // Closing connection to server
+  //}
+ /* if(data3==2){
+    client.print("GET /write_data1.php?"); // This
+  client.print("value="); // This
+  client.print(data1); // And this is what we did in the testing section above. We are making a GET request just like we would from our browser but now with live data from the sensor
+//  client.print(data2);
+  client.print(data3);
+  client.println(" HTTP/1.1"); // Part of the GET request
+  client.println("Host: 127.0.0.1"); // IMPORTANT: If you are using XAMPP you will have to find out the IP address of your computer and put it here 
+  client.println("Connection: close"); // Part of the GET request telling the server that we are over transmitting the message
+  client.println(); // Empty line
+  client.println(); // Empty line
+  client.stop();    // Closing connection to server
+  }*/
+  }
+  else {
+  // If Arduino can't connect to the server (your computer or web page)
+  Serial.println("--> connection failed\n");
+  }
+}

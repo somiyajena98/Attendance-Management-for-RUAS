@@ -1,0 +1,833 @@
+#include "Adafruit_Fingerprint.h" //fingerprint library header file
+#include<EEPROM.h> //command for storing data
+#include<LiquidCrystal.h> //lcd header file
+LiquidCrystal lcd(8,9,10,11,12,13);
+#include<ArduinoJson.h>
+#include <SoftwareSerial.h>
+
+SoftwareSerial fingerPrint(2,3); //for tx/rx communication between arduino & r305 fingerprint sensor
+SoftwareSerial esp(5, 6);
+
+#include <Wire.h >
+#include "RTClib.h" //library file for DS3231 RTC Module
+RTC_DS3231 rtc;
+  
+uint8_t id;
+Adafruit_Fingerprint finger = Adafruit_Fingerprint(&fingerPrint);
+
+#define register_back1 14
+#define delete_ok1 15
+#define forward1 16
+#define reverse1 17
+#define register_back 14
+#define delete_ok 15
+#define forward 16
+#define reverse 17
+#define match 5
+#define indFinger 7
+int led = 6;                // the pin that the LED is atteched to
+int sensor = 5;              // the pin that the sensor is atteched to
+int state = LOW;             // by default, no motion detected
+int val = 0;                 // variable to store the sensor status (value)
+int i=0;
+int j=0;
+int data=0;
+int c;
+#define records 10 // 10 for 10 user
+
+int user1,user2,user3,user4,user5,user6,user7,user8,user9,user10;
+
+DateTime now;
+
+void setup()
+{
+pinMode(led, OUTPUT);      // initalize LED as an 
+pinMode(sensor, OUTPUT);
+digitalWrite(sensor, LOW);
+pinMode(sensor, INPUT);    // initialize sensor as an input
+//Serial.begin(9600);        // initialize serial
+delay(1000);
+lcd.begin(16,2);
+//Serial.begin(9600);
+esp.begin(9600);
+pinMode(register_back1, INPUT_PULLUP);
+pinMode(forward1, INPUT_PULLUP);
+pinMode(reverse1, INPUT_PULLUP);
+pinMode(delete_ok1, INPUT_PULLUP);
+
+pinMode(register_back, INPUT_PULLUP);
+pinMode(forward, INPUT_PULLUP);
+pinMode(reverse, INPUT_PULLUP);
+pinMode(delete_ok, INPUT_PULLUP);
+pinMode(match, INPUT_PULLUP);
+pinMode(indFinger, OUTPUT);
+if(digitalRead(register_back) == 0)
+{
+lcd.clear();
+lcd.print("Please wait !");
+lcd.setCursor(0,1);
+lcd.print("Downloding Data");
+
+Serial.println("Please wait");
+Serial.println("Downloding Data..");
+Serial.println();
+
+Serial.print("S.No. ");
+/*for(int i=0;i<records;i++)
+{*/
+Serial.print(" User ID's");
+//Serial.print(i+1);
+Serial.print(" ");
+Serial.print(" Time");
+Serial.print(" ");
+Serial.print(" Date");
+Serial.print("\n");
+//}
+Serial.println();
+int eepIndex=0;
+char j=0;
+for(int i=0;i<records;i++)//30
+{
+if(i+1<10)
+Serial.print('0');
+Serial.print(i+1);
+Serial.print(" ");
+Serial.print(" User ID");
+Serial.print(i+1);
+Serial.print(" ");
+if(i==0){
+eepIndex=(i*7);
+download(eepIndex);
+}
+else if(i==1){
+eepIndex=(0*7)+210;
+download(eepIndex);}
+else if(i==2){
+eepIndex=(0*7)+420;
+download(eepIndex);}
+else if(i==3){
+eepIndex=(0*7)+630;
+download(eepIndex);}
+else if(i==4){
+eepIndex=(0*7)+840;
+download(eepIndex);}
+else if(i==5){
+eepIndex=(0*7)+1050;
+download(eepIndex);}
+else if(i==6){
+eepIndex=(0*7)+1260;
+download(eepIndex);}
+else if(i==7){
+eepIndex=(0*7)+1470;
+download(eepIndex);}
+else if(i==8){
+eepIndex=(0*7)+1680;
+download(eepIndex);}
+//Serial.println(t);
+Serial.println();
+}
+}
+if(digitalRead(delete_ok) == 0)
+{
+lcd.clear();
+lcd.print("Please Wait00");
+lcd.setCursor(0,1);
+lcd.print("Clearing Record");
+for(int i=1000;i<1005;i++)
+EEPROM.write(i,0);
+for(int i=0;i<841;i++)
+EEPROM.write(i, 0xff);
+lcd.clear();
+lcd.print("System Record Cleared");
+delay(1000);
+}
+
+lcd.clear();
+lcd.print("Attendance Mgmt.");
+lcd.setCursor(0,1);
+lcd.print("For RUAS");
+delay(2000);
+lcd.clear();
+
+for(int i=1000;i<1000+records;i++)
+{
+if(EEPROM.read(i) == 0xff)
+EEPROM.write(i,0);
+}
+
+finger.begin(57600);
+Serial.begin(9600);
+lcd.clear();
+lcd.print("Finding & Checking");
+lcd.setCursor(0,1);
+lcd.print("all Module..");
+lcd.setCursor(0,1);
+delay(2000);
+if (finger.verifyPassword())
+{
+//Serial.println("Found fingerprint sensor!");
+lcd.clear();
+lcd.print(" Module Found");
+delay(2000);
+}
+else
+{
+Serial.println("No fingerprint sensor :(");
+lcd.clear();
+lcd.print("Module Not Found");
+lcd.setCursor(0,1);
+lcd.print("Check Connections");
+while (1);
+}
+
+if (! rtc.begin())
+Serial.println("Couldn't find RTC");
+
+// rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+
+if (rtc.lostPower())
+{ 
+Serial.println("RTC is NOT running!");
+rtc.adjust(DateTime(2019, 3, 29, 11, 10, 0));
+}
+lcd.setCursor(0,0);
+lcd.print(" Press Match to ");
+lcd.setCursor(0,1);
+lcd.print(" Start System");
+delay(3000);
+
+user1=EEPROM.read(1000);
+user2=EEPROM.read(1001);
+user3=EEPROM.read(1002);
+user4=EEPROM.read(1003);
+user5=EEPROM.read(1004);
+lcd.clear();
+digitalWrite(indFinger, HIGH);
+
+}
+
+void loop()
+{
+StaticJsonBuffer<1000> jsonBuffer;
+JsonObject& root = jsonBuffer.createObject();
+now = rtc.now();
+lcd.setCursor(0,0);
+lcd.print("Time: ");
+lcd.print(now.hour(), DEC);
+lcd.print(':');
+lcd.print(now.minute(), DEC);
+lcd.print(':');
+lcd.print(now.second(), DEC);
+lcd.print(" ");
+lcd.setCursor(0,1);
+lcd.print("Date: ");
+lcd.print(now.day(), DEC);
+lcd.print('/');
+lcd.print(now.month(), DEC);
+lcd.print('/');
+lcd.print(now.year(), DEC);
+lcd.print(" ");
+delay(500);
+int result=getFingerprintIDez();
+if(result>0)
+{
+if(result==1)
+{
+  lcd.clear();
+  lcd.print("Press Start");
+  delay(1000);
+  lcd.clear();
+  lcd.print("Going");
+  while(1){
+if(digitalRead(register_back1) == 0)
+  {
+    lcd.clear();
+    lcd.print("Please Wait1");
+    delay(1000);
+    while(digitalRead(register_back) == 0);
+    {
+      lcd.clear();
+  lcd.print("1 - CSC301");
+    lcd.setCursor(0,1);
+    lcd.print("2 - CSC302");
+    delay(1000);
+    lcd.clear();
+    lcd.print("Subject Code");
+    c = 1;
+  while(1){
+    lcd.setCursor(0,1);
+    lcd.print(c);
+    if(digitalRead(forward1) == 0)
+    {
+     c++;
+     if(c>2)
+     c=1;
+     delay(500);
+    }
+    else if(digitalRead(reverse1) == 0)
+    {
+     c--;
+     if(c<1)
+     c=2;
+     delay(500);
+    }
+    else if(digitalRead(delete_ok1) == 0)
+    {
+        lcd.clear();
+  lcd.print("1-Last attendance");
+  lcd.setCursor(0,1);
+      lcd.print("2-New attendance");
+      delay(1000);
+      lcd.clear();
+      int c1=1;
+  while(1){
+      lcd.setCursor(0,1);
+      lcd.print(c1);
+      if(digitalRead(forward1) == 0)
+      {
+       c1++;
+       if(c1>2)
+         c1=1;
+       delay(500);
+      }
+      else if(digitalRead(reverse1) == 0)
+      {
+       c1--;
+       if(c1<1)
+        c1=2;
+       delay(500);
+      }
+      else if(digitalRead(delete_ok1) == 0)
+      {
+       if(c1==1)
+       {
+         lcd.print("HEY");
+       }
+       if(c1==2)
+       {
+           while(1){
+int res=getFingerprintIDez();
+if(res>0){
+
+  /* val = digitalRead(sensor);   
+  if (val == HIGH) {           
+    digitalWrite(led, HIGH); i++;  
+    delay(1000);               
+    digitalWrite(led, LOW);
+    
+    if (state == LOW) {
+      Serial.println("Motion detected!"); 
+      state = HIGH;       // update variable state to HIGH
+    }
+  } 
+  else {
+      digitalWrite(led, LOW); // turn LED OFF
+      delay(30);             // delay 200 milliseconds 
+      
+      if (state == HIGH){
+        Serial.println("Motion stopped!");
+        state = LOW;       // update variable state to LOW
+    }
+  }*/
+digitalWrite(indFinger, LOW);
+lcd.clear();
+lcd.print("ID:");
+lcd.print(res);
+lcd.setCursor(0,1);
+lcd.print("Please Wait....");
+delay(1000);
+attendance(res);
+root["1"]=result;
+if(c==1)
+{root["3"]=1;}
+else if(c==2)
+{
+  root["3"]=2;
+}
+//root["2"]=i;
+lcd.clear();
+lcd.print("Attendance ");
+lcd.setCursor(0,1);
+lcd.print("Marked");
+delay(1000);
+digitalWrite(indFinger, HIGH);
+lcd.clear();
+lcd.print("Count = ");
+lcd.setCursor(0,1);
+lcd.print(i);
+delay(1000);
+data++;
+root.printTo(esp);
+continue;
+}
+}
+}
+return;
+}
+    }
+    return;
+    }
+     }
+    }
+  }
+}    
+ }
+}
+checkKeys();
+delay(300);
+}
+void attendance(int id)
+{
+int user=0,eepLoc=0;
+if(id == 1)
+{
+eepLoc=0;
+user=user1++;
+}
+else if(id == 2)
+{
+eepLoc=210;
+user=user2++;
+}
+else if(id == 3)
+{
+eepLoc=420;
+user=user3++;
+}
+else if(id == 4)
+{
+eepLoc=630;
+user=user4++;
+}
+else if(id == 5)
+{
+eepLoc=0;
+user=user5++;
+}
+else if(id == 6)
+{
+eepLoc=840;
+user=user5++;
+}
+else if(id == 7)
+{
+eepLoc=1050;
+user=user7++;
+}
+else if(id == 8)
+{
+eepLoc=1260;
+user=user8++;
+}
+else if(id == 9)
+{
+eepLoc=1470;
+user=user9++;
+}
+else if(id == 10)
+{
+eepLoc=1680;
+user=user8++;
+}
+else
+return;
+
+int eepIndex=(user*7)+eepLoc;
+EEPROM.write(eepIndex++, now.hour());
+EEPROM.write(eepIndex++, now.minute());
+EEPROM.write(eepIndex++, now.second());
+EEPROM.write(eepIndex++, now.day());
+EEPROM.write(eepIndex++, now.month());
+EEPROM.write(eepIndex++, now.year()>>8 );
+EEPROM.write(eepIndex++, now.year());
+
+EEPROM.write(1000,user1);
+EEPROM.write(1001,user2);
+EEPROM.write(1002,user3);
+EEPROM.write(1003,user4);
+}
+
+void checkKeys()
+{
+if(digitalRead(register_back) == 0)
+{
+lcd.clear();
+lcd.print("Please Wait2");
+delay(1000);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+while(digitalRead(register_back) == 0);
+Enroll();
+}
+
+else if(digitalRead(delete_ok) == 0)
+{
+lcd.clear();
+lcd.print("Please Wait3");
+delay(1000);
+delet();
+}
+}
+
+void Enroll()
+{
+int count=1;
+lcd.clear();
+lcd.print("Enter Fingerprint:");
+
+while(1)
+{
+lcd.setCursor(0,1);
+lcd.print(count);
+if(digitalRead(forward) == 0)
+{
+count++;
+if(count>records)
+count=1;
+delay(500);
+}
+
+else if(digitalRead(reverse) == 0)
+{
+count--;
+if(count<1)
+count=records;
+delay(500);
+}
+else if(digitalRead(delete_ok) == 0)
+{
+id=count;
+getFingerprintEnroll();
+for(int i=0;i<records;i++)
+{
+if(EEPROM.read(i) != 0xff)
+{
+EEPROM.write(i, id);
+break;
+}
+}
+return;
+}
+
+else if(digitalRead(register_back) == 0)
+{
+return;
+}
+}
+}
+
+void delet()
+{
+int count=1;
+lcd.clear();
+lcd.print("Enter Fingerprint");
+
+while(1)
+{
+lcd.setCursor(0,1);
+lcd.print(count);
+if(digitalRead(forward) == 0)
+{
+count++;
+if(count>records)
+count=1;
+delay(500);
+}
+
+else if(digitalRead(reverse) == 0)
+{
+count--;
+if(count<1)
+count=records;
+delay(500);
+}
+else if(digitalRead(delete_ok) == 0)
+{
+id=count;
+deleteFingerprint(id);
+for(int i=0;i<records;i++)
+{
+if(EEPROM.read(i) == id)
+{
+EEPROM.write(i, 0xff);
+break;
+}
+}
+return;
+}
+
+else if(digitalRead(register_back) == 0)
+{
+return;
+}
+}
+}
+
+uint8_t getFingerprintEnroll()
+{
+int p = -1;
+lcd.clear();
+lcd.print("finger ID:");
+lcd.print(id);
+lcd.setCursor(0,1);
+lcd.print("Place Finger");
+delay(2000);
+while (p != FINGERPRINT_OK)
+{
+p = finger.getImage();
+switch (p)
+{
+case FINGERPRINT_OK:
+Serial.println("Fingerprint taken");
+lcd.clear();
+lcd.print("Fingerprint taken");
+break;
+case FINGERPRINT_NOFINGER:
+Serial.println("No Fingerprint");
+lcd.clear();
+lcd.print("No Fingerprint Found");
+break;
+case FINGERPRINT_PACKETRECIEVEERR:
+Serial.println("Communication error");
+lcd.clear();
+lcd.print("Comm Error");
+break;
+case FINGERPRINT_IMAGEFAIL:
+Serial.println("Fingerprint sensing error");
+lcd.clear();
+lcd.print("Fingerprint sensing Error");
+break;
+default:
+Serial.println("Unknown error");
+lcd.clear();
+lcd.print("Unknown Error");
+break;
+}
+}
+
+// OK success!
+
+p = finger.image2Tz(1);
+switch (p) {
+case FINGERPRINT_OK:
+Serial.println("Fingerprint converted");
+lcd.clear();
+lcd.print("Fingerprint converted");
+break;
+case FINGERPRINT_IMAGEMESS:
+Serial.println("Fingerprint too messy");
+lcd.clear();
+lcd.print("Fingerprint too messy");
+return p;
+case FINGERPRINT_PACKETRECIEVEERR:
+Serial.println("Communication error");
+lcd.clear();
+lcd.print("Comm Error");
+return p;
+case FINGERPRINT_FEATUREFAIL:
+Serial.println("Could not find fingerprint features");
+lcd.clear();
+lcd.print("Feature Not Found");
+return p;
+case FINGERPRINT_INVALIDIMAGE:
+Serial.println("Could not find fingerprint features");
+lcd.clear();
+lcd.print("Feature Not Found");
+return p;
+default:
+Serial.println("Unknown error");
+lcd.clear();
+lcd.print("Unknown Error");
+return p;
+}
+
+Serial.println("Remove finger");
+lcd.clear();
+lcd.print("Remove Finger");
+delay(2000);
+p = 0;
+while (p != FINGERPRINT_NOFINGER) {
+p = finger.getImage();
+}
+Serial.print("ID "); Serial.println(id);
+p = -1;
+Serial.println("Place same finger again");
+lcd.clear();
+lcd.print("Place Finger");
+lcd.setCursor(0,1);
+lcd.print(" Again");
+while (p != FINGERPRINT_OK) {
+p = finger.getImage();
+switch (p) {
+case FINGERPRINT_OK:
+Serial.println("Fingerprint taken");
+break;
+case FINGERPRINT_NOFINGER:
+Serial.print(".");
+break;
+case FINGERPRINT_PACKETRECIEVEERR:
+Serial.println("Communication error");
+break;
+case FINGERPRINT_IMAGEFAIL:
+Serial.println("Fingerprint sensing error");
+break;
+default:
+Serial.println("Unknown error");
+return 0;
+}
+}
+
+// OK success!
+
+p = finger.image2Tz(2);
+switch (p) {
+case FINGERPRINT_OK:
+Serial.println("Fingerprint converted");
+break;
+case FINGERPRINT_IMAGEMESS:
+Serial.println("Fingerprint too messy");
+return p;
+case FINGERPRINT_PACKETRECIEVEERR:
+Serial.println("Communication error");
+return p;
+case FINGERPRINT_FEATUREFAIL:
+Serial.println("Could not find fingerprint features");
+return p;
+case FINGERPRINT_INVALIDIMAGE:
+Serial.println("Could not find fingerprint features");
+return p;
+default:
+Serial.println("Unknown error");
+return p;
+}
+
+// OK converted!
+Serial.print("Creating model for #"); Serial.println(id);
+
+p = finger.createModel();
+if (p == FINGERPRINT_OK) {
+Serial.println("Finger-Prints matched!");
+} else if (p == FINGERPRINT_PACKETRECIEVEERR) {
+Serial.println("Communication error");
+return p;
+} else if (p == FINGERPRINT_ENROLLMISMATCH) {
+Serial.println("Fingerprints did not match");
+return p;
+} else {
+Serial.println("Unknown error");
+return p;
+}
+
+Serial.print("ID "); Serial.println(id);
+p = finger.storeModel(id);
+if (p == FINGERPRINT_OK) {
+Serial.println("Stored!");
+lcd.clear();
+lcd.print(" Fingerprint Stored!");
+delay(2000);
+} else if (p == FINGERPRINT_PACKETRECIEVEERR) {
+Serial.println("Communication error");
+return p;
+} else if (p == FINGERPRINT_BADLOCATION) {
+Serial.println("Could not store in that location");
+return p;
+} else if (p == FINGERPRINT_FLASHERR) {
+Serial.println("Error writing to flash");
+return p;
+}
+else {
+Serial.println("Unknown error");
+return p;
+}
+}
+
+int getFingerprintIDez()
+{
+uint8_t p = finger.getImage();
+
+if (p != FINGERPRINT_OK)
+return -1;
+
+p = finger.image2Tz();
+if (p != FINGERPRINT_OK)
+return -1;
+
+p = finger.fingerFastSearch();
+if (p != FINGERPRINT_OK)
+{
+lcd.clear();
+lcd.print("Finger Not Found");
+lcd.setCursor(0,1);
+lcd.print("Try Later");
+delay(2000);
+return -1;
+}
+// found a match!
+Serial.print("Found ID #");
+Serial.print(finger.fingerID);
+return finger.fingerID;
+}
+
+uint8_t deleteFingerprint(uint8_t id)
+{
+uint8_t p = -1;
+lcd.clear();
+lcd.print("Please wait4");
+p = finger.deleteModel(id);
+if (p == FINGERPRINT_OK)
+{
+Serial.println("Deleted!");
+lcd.clear();
+lcd.print("Fingerprint Deleted");
+lcd.setCursor(0,1);
+lcd.print("Successfully");
+delay(1000);
+}
+
+else
+{
+Serial.print("Something Wrong");
+lcd.clear();
+lcd.print("Something Wrong");
+lcd.setCursor(0,1);
+lcd.print("Try Again Later");
+delay(2000);
+return p;
+}
+}
+
+void download(int eepIndex)
+{
+
+if(EEPROM.read(eepIndex) != 0xff)
+{
+
+Serial.print("T->");
+if(EEPROM.read(eepIndex)<10)
+Serial.print('0');
+Serial.print(EEPROM.read(eepIndex++));
+Serial.print(':');
+if(EEPROM.read(eepIndex)<10)
+Serial.print('0');
+Serial.print(EEPROM.read(eepIndex++));
+Serial.print(':');
+if(EEPROM.read(eepIndex)<10)
+Serial.print('0');
+Serial.print(EEPROM.read(eepIndex++));
+Serial.print(" D->");
+if(EEPROM.read(eepIndex)<10)
+Serial.print('0');
+Serial.print(EEPROM.read(eepIndex++));
+Serial.print('/');
+if(EEPROM.read(eepIndex)<10)
+Serial.print('0');
+Serial.print(EEPROM.read(eepIndex++));
+Serial.print('/');
+Serial.print(EEPROM.read(eepIndex++)<<8 | EEPROM.read(eepIndex++));
+
+}
+else
+{
+Serial.print("---------------------------");
+}
+
+Serial.print(" ");
+}
